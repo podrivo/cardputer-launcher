@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "app_main.cpp" "display.cpp" "theme.cpp"
     INCLUDE_DIRS "."
-    REQUIRES M5GFX driver app_update esp_partition esp_app_format
+    REQUIRES M5GFX driver app_update esp_partition esp_app_format bootloader_support esp_hw_support
 )
 
 # PCH for M5GFX — only on display.cpp so theme/app_main stays light.

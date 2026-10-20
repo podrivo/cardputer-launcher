@@ -10,8 +10,10 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_OFFSET=0x8000
 
-# One-shot app boot: power-off without mark_valid returns to factory
-CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# Keep factory as the normal boot target. Apps are launched via deep-sleep +
+# RTC retain (see boot_app) so power-off clears RTC and returns here even when
+# catalog/Arduino apps call esp_ota_mark_app_valid_cancel_rollback().
+CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP=y
 
 # M5GFX init is stack-heavy on the main task
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

@@ -137,7 +137,36 @@ export function measureAppSize(image) {
   return alignUp(image.length, ALIGN);
 }
 
-export function appendOtaPartition(flash, appImage) {
+/** ESP app_desc at +0x20 in a typical app image: version@+0x10, project_name@+0x30 from magic. */
+function readAppDescNames(image) {
+  if (image.length < 0x20 + 0x50) return { projectName: "", version: "" };
+  const mag = image.readUInt32LE(0x20);
+  if (mag !== 0xabcd5432) return { projectName: "", version: "" };
+  const version = image.toString("utf8", 0x30, 0x50).replace(/\0+$/, "");
+  const projectName = image.toString("utf8", 0x50, 0x70).replace(/\0+$/, "");
+  return { projectName, version };
+}
+
+function isGenericLabel(s) {
+  if (!s) return true;
+  const t = String(s).trim();
+  if (!t) return true;
+  if (/^ota_\d+$/i.test(t)) return true;
+  if (["app", "firmware", "project", "arduino-lib-builder"].includes(t.toLowerCase())) return true;
+  return false;
+}
+
+/** Partition label max 15 chars (ESP-IDF). Prefer explicit name, then project, then file stem. */
+export function pickPartitionLabel({ name, appImage, fileStem, index }) {
+  const { projectName } = appImage ? readAppDescNames(appImage) : { projectName: "" };
+  const raw = [name, projectName, fileStem].find((s) => !isGenericLabel(s)) || `ota_${index}`;
+  return String(raw)
+    .replace(/[^\w.\- ]+/g, "")
+    .trim()
+    .slice(0, 15) || `ota_${index}`;
+}
+
+export function appendOtaPartition(flash, appImage, opts = {}) {
   if (!isMerged(flash)) throw new Error("Launcher image must be a merged bin (partition table at 0x8000)");
   if (appImage[0] !== 0xe9) throw new Error("App image missing 0xe9 magic");
 
@@ -160,7 +189,12 @@ export function appendOtaPartition(flash, appImage) {
   }
 
   const subtype = SUB_OTA_0 + otas.length;
-  const label = `ota_${otas.length}`;
+  const label = pickPartitionLabel({
+    name: opts.name,
+    appImage,
+    fileStem: opts.fileStem,
+    index: otas.length,
+  });
   const next = {
     type: TYPE_APP,
     subtype,
@@ -191,7 +225,8 @@ function main() {
   const launcher = readFileSync(resolve(launcherPath));
   const appRaw = readFileSync(resolve(appPath));
   const appImage = extractAppImage(appRaw);
-  const { out, entry, freeAfter } = appendOtaPartition(launcher, appImage);
+  const stem = basename(appPath).replace(/\.bin$/i, "");
+  const { out, entry, freeAfter } = appendOtaPartition(launcher, appImage, { fileStem: stem });
   const outPath = resolve(outPathArg || `${launcherPath.replace(/\.bin$/i, "")}-with-${basename(appPath)}`);
   writeFileSync(outPath, out);
   console.log(

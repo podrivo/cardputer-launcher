@@ -1,13 +1,17 @@
-// Mini Launcher — list packed ota_* apps; Enter one-shot boots (rollback on power-off).
+// Mini Launcher — list packed ota_* apps; Enter launches via deep-sleep retain.
+// Power-off clears RTC → bootloader falls back to factory (this UI).
 
 #include <cstdio>
 #include <cstring>
 
+#include "bootloader_common.h"
 #include "driver/i2c_master.h"
 #include "esp_app_desc.h"
+#include "esp_flash_partitions.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "esp_sleep.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -62,25 +66,21 @@ esp_err_t tca_read(uint8_t reg, uint8_t *val)
 
 bool kbd_init()
 {
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = KBD_SDA,
-        .scl_io_num = KBD_SCL,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .intr_priority = 0,
-        .trans_queue_depth = 0,
-        .flags = {.enable_internal_pullup = true},
-    };
+    i2c_master_bus_config_t bus_cfg = {};
+    bus_cfg.i2c_port = I2C_NUM_0;
+    bus_cfg.sda_io_num = KBD_SDA;
+    bus_cfg.scl_io_num = KBD_SCL;
+    bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+    bus_cfg.glitch_ignore_cnt = 7;
+    bus_cfg.flags.enable_internal_pullup = true;
     if (i2c_new_master_bus(&bus_cfg, &i2c_bus) != ESP_OK) {
         return false;
     }
 
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = KBD_ADDR,
-        .scl_speed_hz = KBD_HZ,
-    };
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address = KBD_ADDR;
+    dev_cfg.scl_speed_hz = KBD_HZ;
     if (i2c_master_bus_add_device(i2c_bus, &dev_cfg, &tca) != ESP_OK) {
         return false;
     }
@@ -111,9 +111,67 @@ bool kbd_poll_press(uint8_t *keycode)
 
 bool is_ota_subtype(uint8_t subtype)
 {
-    // ESP-IDF: ota_0 … ota_15 → subtype 0x10 … 0x1F
     return subtype >= ESP_PARTITION_SUBTYPE_APP_OTA_MIN &&
            subtype <= ESP_PARTITION_SUBTYPE_APP_OTA_MIN + 15;
+}
+
+bool is_generic_name(const char *s)
+{
+    if (s == nullptr || s[0] == '\0') {
+        return true;
+    }
+    if (std::strcmp(s, "app") == 0 || std::strcmp(s, "firmware") == 0 ||
+        std::strcmp(s, "arduino-lib-builder") == 0 || std::strcmp(s, "project") == 0) {
+        return true;
+    }
+    // Bare ota_N partition labels
+    if (std::strncmp(s, "ota_", 4) == 0) {
+        const char *p = s + 4;
+        if (*p == '\0') {
+            return true;
+        }
+        while (*p) {
+            if (*p < '0' || *p > '9') {
+                return false;
+            }
+            ++p;
+        }
+        return true;
+    }
+    return false;
+}
+
+void fill_app_name(AppEntry *entry, const esp_partition_t *part, const esp_app_desc_t &desc)
+{
+    // 1) Partition label from packer / installers (catalog name, truncated)
+    if (!is_generic_name(part->label)) {
+        std::snprintf(entry->name, sizeof(entry->name), "%s", part->label);
+        return;
+    }
+    // 2) CMake / IDF project_name
+    if (!is_generic_name(desc.project_name)) {
+        std::snprintf(entry->name, sizeof(entry->name), "%s", desc.project_name);
+        return;
+    }
+    // 3) Version string when it looks like a real name (not a short git sha)
+    if (!is_generic_name(desc.version) && std::strlen(desc.version) > 2) {
+        bool mostly_hex = true;
+        for (const char *p = desc.version; *p; ++p) {
+            const char c = *p;
+            const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) {
+                mostly_hex = false;
+                break;
+            }
+        }
+        if (!mostly_hex || std::strlen(desc.version) > 10) {
+            std::snprintf(entry->name, sizeof(entry->name), "%s", desc.version);
+            return;
+        }
+    }
+    // 4) Fallback
+    std::snprintf(entry->name, sizeof(entry->name), "ota_%u",
+                  static_cast<unsigned>(part->subtype - ESP_PARTITION_SUBTYPE_APP_OTA_MIN));
 }
 
 size_t discover_apps(AppEntry *out, size_t cap)
@@ -137,11 +195,7 @@ size_t discover_apps(AppEntry *out, size_t cap)
         }
 
         out[n].part = part;
-        std::snprintf(out[n].name, sizeof(out[n].name), "%s", desc.project_name);
-        if (out[n].name[0] == '\0') {
-            std::snprintf(out[n].name, sizeof(out[n].name), "ota_%u",
-                          static_cast<unsigned>(part->subtype - ESP_PARTITION_SUBTYPE_APP_OTA_MIN));
-        }
+        fill_app_name(&out[n], part, desc);
         ++n;
     }
     if (it) {
@@ -150,18 +204,41 @@ size_t discover_apps(AppEntry *out, size_t cap)
     return n;
 }
 
-void boot_app(const AppEntry &app)
+/** Keep otadata on factory so cold boot always lands here. */
+void ensure_factory_boot_target()
 {
-    ESP_LOGI(TAG, "One-shot boot %s @ 0x%08lx", app.name, static_cast<unsigned long>(app.part->address));
-    display_show_booting(app.name);
-    // Never mark valid — power cycle rolls back to factory (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE).
-    esp_err_t err = esp_ota_set_boot_partition(app.part);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_set_boot_partition: %s", esp_err_to_name(err));
+    const esp_partition_t *factory = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, nullptr);
+    if (factory == nullptr) {
         return;
     }
-    vTaskDelay(pdMS_TO_TICKS(200));
-    esp_restart();
+    const esp_partition_t *boot = esp_ota_get_boot_partition();
+    if (boot != nullptr && boot->address == factory->address) {
+        return;
+    }
+    // Erases otadata → next cold boot uses factory.
+    esp_err_t err = esp_ota_set_boot_partition(factory);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "ensure factory boot: %s", esp_err_to_name(err));
+    }
+}
+
+void boot_app(const AppEntry &app)
+{
+    ESP_LOGI(TAG, "Deep-sleep launch %s @ 0x%08lx", app.name,
+             static_cast<unsigned long>(app.part->address));
+    display_show_booting(app.name);
+
+    // Stay on factory in otadata. Point RTC retain at the app; deep-sleep wake
+    // makes the bootloader load it without changing the permanent boot target.
+    esp_partition_pos_t pos = {
+        .offset = app.part->address,
+        .size = app.part->size,
+    };
+    bootloader_common_update_rtc_retain_mem(&pos, true);
+
+    esp_sleep_enable_timer_wakeup(50 * 1000); // 50 ms
+    esp_deep_sleep_start();
 }
 
 } // namespace
@@ -173,6 +250,7 @@ extern "C" void app_main(void)
     static launcher_app_view views[kMaxApps];
 
     display_init();
+    ensure_factory_boot_target();
 
     const size_t count = discover_apps(apps, kMaxApps);
     for (size_t i = 0; i < count; ++i) {
@@ -218,7 +296,6 @@ extern "C" void app_main(void)
             break;
         case KEY_ENTER:
             boot_app(apps[selected]);
-            // If boot failed, redraw list.
             redraw = true;
             break;
         default:

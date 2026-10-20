@@ -2,7 +2,7 @@
 
 Tiny factory-partition launcher for the [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv). Flash it once over USB-C from [Cardputer ADV Installers](https://github.com/podrivo/cardputer), then **Add to launcher** packs each app into the free flash (only the bytes it needs, up to 16 apps).
 
-**Power off always returns here.** Opening an app is a one-shot OTA boot with rollback — apps must not call `esp_ota_mark_app_valid_cancel_rollback()`.
+**Power off always returns here.** Opening an app uses deep-sleep + RTC retain so the permanent boot target stays `factory` (works even when catalog/Arduino apps call `esp_ota_mark_app_valid_cancel_rollback()`).
 
 Based on [cardputer-adv-template](https://github.com/podrivo/cardputer-adv-template). Prior art: [bmorcelli/Launcher](https://github.com/bmorcelli/Launcher), [d4rkmen/M5Apps](https://github.com/d4rkmen/M5Apps).
 
