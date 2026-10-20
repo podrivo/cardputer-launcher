@@ -1,0 +1,19 @@
+# M5Stack Cardputer ADV — Stamp-S3A (ESP32-S3FN8), 8 MB flash
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+
+# USB-C console (Stamp-S3 USB Serial/JTAG)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Custom partition table: factory launcher + room for packed ota_* apps
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+# One-shot app boot: power-off without mark_valid returns to factory
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# M5GFX init is stack-heavy on the main task
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Flash baud is not an sdkconfig knob on IDF 5.4+; scripts set ESPBAUD=921600.

@@ -1,0 +1,21 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+node_modules/
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+bins/*-with-*.bin
+bins/test-packed.bin
+
+# Vendored after first fetch — see README
+components/M5GFX/
+
+# Demo project build tree
+demo/build/
+demo/sdkconfig
+demo/sdkconfig.old
+demo/dependencies.lock
