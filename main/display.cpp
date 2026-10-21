@@ -138,7 +138,7 @@ void display_show_delete_confirm(const char *name)
 {
     display.fillScreen(theme_col_bg);
     display.setTextSize(1);
-    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setTextColor(theme_col_err, theme_col_bg);
     display.setCursor(8, 8);
     display.printf("Delete %s?", name ? name : "");
     display.setTextColor(theme_col_dim, theme_col_bg);
