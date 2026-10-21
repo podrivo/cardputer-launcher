@@ -17,7 +17,6 @@ const char *theme_shortcuts =
     "Esc close";
 const char *theme_kbd_error = "No TCA8418";
 const char *theme_booting = "Starting...";
-const char *theme_delete_title = "Delete this app?";
 const char *theme_delete_hint = "DEL Cancel  OK Confirm";
 const char *theme_deleting = "Deleting...";
 const char *theme_delete_fail = "Delete failed";

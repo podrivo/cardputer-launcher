@@ -145,21 +145,14 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
     }
 }
 
-void display_show_delete_confirm(const char *name, uint32_t size_bytes)
+void display_show_delete_confirm(const char *name)
 {
     display.fillScreen(theme_col_bg);
     display.setTextSize(1);
     display.setTextColor(theme_col_fg, theme_col_bg);
     display.setCursor(8, 8);
-    display.print(theme_delete_title);
-    display.setCursor(8, 28);
-    display.print(name ? name : "");
-    char size_line[24];
-    std::snprintf(size_line, sizeof(size_line), "%u KB",
-                  static_cast<unsigned>((size_bytes + 1023u) / 1024u));
+    display.printf("Delete %s?", name ? name : "");
     display.setTextColor(theme_col_dim, theme_col_bg);
-    display.setCursor(8, 48);
-    display.print(size_line);
     display.setCursor(8, 120);
     display.print(theme_delete_hint);
 }
