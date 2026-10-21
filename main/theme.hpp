@@ -9,6 +9,9 @@ extern uint16_t theme_col_dim;
 extern uint16_t theme_col_sel;
 extern uint16_t theme_col_err;
 
+// Pick a random palette for this boot (call before first draw).
+void theme_pick_palette();
+
 struct theme_shortcut {
     const char *keys;
     const char *label;

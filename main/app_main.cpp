@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 
 #include "display.hpp"
+#include "theme.hpp"
 
 namespace {
 
@@ -411,6 +412,7 @@ extern "C" void app_main(void)
     static AppEntry apps[kMaxApps];
     static launcher_app_view views[kMaxApps];
 
+    theme_pick_palette();
     display_init();
     display_show_splash();
 
