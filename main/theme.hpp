@@ -10,6 +10,6 @@ extern uint16_t theme_col_err;
 
 extern const char *theme_title;
 extern const char *theme_empty;
-extern const char *theme_hint;
+extern const char *theme_shortcuts;
 extern const char *theme_kbd_error;
 extern const char *theme_booting;

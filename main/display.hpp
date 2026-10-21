@@ -9,6 +9,8 @@ struct launcher_app_view {
 };
 
 void display_init();
+void display_show_splash();
+void display_show_shortcuts();
 void display_show_kbd_error();
 void display_show_empty();
 void display_show_list(const launcher_app_view *apps, size_t count, size_t selected);

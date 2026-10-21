@@ -38,7 +38,8 @@ constexpr uint8_t TCA_REG_KP_GPIO1 = 0x1D;
 constexpr uint8_t TCA_REG_KP_GPIO2 = 0x1E;
 constexpr uint8_t TCA_REG_KP_GPIO3 = 0x1F;
 
-// Physical keycodes (ADV TCA8418 scan)
+// Physical keycodes (ADV TCA8418 scan, raw events)
+constexpr uint8_t KEY_ESC = 1;
 constexpr uint8_t KEY_LEFT = 54;
 constexpr uint8_t KEY_RIGHT = 64;
 constexpr uint8_t KEY_ENTER = 67;
@@ -50,8 +51,8 @@ struct AppEntry {
     char name[kNameLen];
 };
 
-i2c_master_bus_handle_t i2c_bus;
-i2c_master_dev_handle_t tca;
+i2c_master_bus_handle_t i2c_bus = nullptr;
+i2c_master_dev_handle_t tca = nullptr;
 
 esp_err_t tca_write(uint8_t reg, uint8_t val)
 {
@@ -250,6 +251,8 @@ extern "C" void app_main(void)
     static launcher_app_view views[kMaxApps];
 
     display_init();
+    display_show_splash();
+
     ensure_factory_boot_target();
 
     const size_t count = discover_apps(apps, kMaxApps);
@@ -263,12 +266,21 @@ extern "C" void app_main(void)
         return;
     }
 
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
     size_t selected = 0;
-    if (count == 0) {
-        display_show_empty();
-    } else {
-        display_show_list(views, count, selected);
-    }
+    bool show_shortcuts = false;
+
+    auto redraw = [&]() {
+        if (show_shortcuts) {
+            display_show_shortcuts();
+        } else if (count == 0) {
+            display_show_empty();
+        } else {
+            display_show_list(views, count, selected);
+        }
+    };
+    redraw();
     ESP_LOGI(TAG, "%u app(s)", static_cast<unsigned>(count));
 
     for (;;) {
@@ -278,31 +290,37 @@ extern "C" void app_main(void)
             continue;
         }
 
-        if (count == 0) {
+        if (key == KEY_ESC) {
+            show_shortcuts = !show_shortcuts;
+            redraw();
             continue;
         }
 
-        bool redraw = false;
+        if (show_shortcuts || count == 0) {
+            continue;
+        }
+
+        bool need_redraw = false;
         switch (key) {
         case KEY_LEFT:
         case KEY_UP:
             selected = (selected == 0) ? count - 1 : selected - 1;
-            redraw = true;
+            need_redraw = true;
             break;
         case KEY_RIGHT:
         case KEY_DOWN:
             selected = (selected + 1) % count;
-            redraw = true;
+            need_redraw = true;
             break;
         case KEY_ENTER:
             boot_app(apps[selected]);
-            redraw = true;
+            need_redraw = true;
             break;
         default:
             break;
         }
 
-        if (redraw) {
+        if (need_redraw) {
             display_show_list(views, count, selected);
         }
     }
