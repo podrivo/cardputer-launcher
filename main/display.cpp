@@ -7,6 +7,16 @@ namespace {
 
 M5GFX display;
 
+constexpr int kBrightMin = 0;
+constexpr int kBrightMax = 100;
+constexpr int kBrightStep = 10;
+int brightness_percent = 80;
+
+void apply_brightness()
+{
+    display.setBrightness(static_cast<uint8_t>((brightness_percent * 255) / kBrightMax));
+}
+
 int count_lines(const char *text)
 {
     int n = 1;
@@ -58,6 +68,19 @@ void display_init()
 {
     display.init();
     display.setRotation(1);
+    apply_brightness();
+}
+
+int display_adjust_brightness(int delta_steps)
+{
+    brightness_percent += delta_steps * kBrightStep;
+    if (brightness_percent < kBrightMin) {
+        brightness_percent = kBrightMin;
+    } else if (brightness_percent > kBrightMax) {
+        brightness_percent = kBrightMax;
+    }
+    apply_brightness();
+    return brightness_percent;
 }
 
 void display_show_splash()

@@ -40,6 +40,8 @@ constexpr uint8_t TCA_REG_KP_GPIO3 = 0x1F;
 
 // Physical keycodes (ADV TCA8418 scan, raw events)
 constexpr uint8_t KEY_ESC = 1;
+constexpr uint8_t KEY_MINUS = 55;
+constexpr uint8_t KEY_PLUS = 61;
 constexpr uint8_t KEY_LEFT = 54;
 constexpr uint8_t KEY_RIGHT = 64;
 constexpr uint8_t KEY_ENTER = 67;
@@ -293,6 +295,11 @@ extern "C" void app_main(void)
         if (key == KEY_ESC) {
             show_shortcuts = !show_shortcuts;
             redraw();
+            continue;
+        }
+
+        if (key == KEY_MINUS || key == KEY_PLUS) {
+            display_adjust_brightness(key == KEY_PLUS ? 1 : -1);
             continue;
         }
 

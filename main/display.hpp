@@ -9,6 +9,7 @@ struct launcher_app_view {
 };
 
 void display_init();
+int display_adjust_brightness(int delta_steps);
 void display_show_splash();
 void display_show_shortcuts();
 void display_show_kbd_error();

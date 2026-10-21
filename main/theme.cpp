@@ -12,6 +12,7 @@ const char *theme_empty = "No apps - add via\ninstallers site";
 const char *theme_shortcuts =
     "< > browse\n"
     "Enter open\n"
+    "- + brightness\n"
     "Esc close";
 const char *theme_kbd_error = "No TCA8418";
 const char *theme_booting = "Starting...";
