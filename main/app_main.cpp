@@ -57,7 +57,6 @@ constexpr size_t kEntrySize = 32;
 constexpr uint16_t kPartMagic = 0x50aa;
 constexpr uint16_t kMd5Magic = 0xebeb;
 constexpr size_t kMaxParts = 32;
-constexpr uint32_t kFlashAlign = 0x10000;
 constexpr uint32_t kEraseAlign = 0x1000;
 
 struct AppEntry {
@@ -349,72 +348,36 @@ esp_err_t write_part_table(const FlashPart *parts, size_t count)
     return esp_flash_write(nullptr, table, kTableOff, kTableSize);
 }
 
-esp_err_t copy_flash_region(uint32_t dst, uint32_t src, uint32_t size)
-{
-    if (dst == src || size == 0) {
-        return ESP_OK;
-    }
-    static uint8_t chunk[kEraseAlign];
-    const uint32_t erase_len = align_up(size, kEraseAlign);
-    esp_err_t err = esp_flash_erase_region(nullptr, dst, erase_len);
-    if (err != ESP_OK) {
-        return err;
-    }
-    for (uint32_t off = 0; off < size; off += sizeof(chunk)) {
-        const uint32_t n = (size - off > sizeof(chunk)) ? sizeof(chunk) : (size - off);
-        err = esp_flash_read(nullptr, chunk, src + off, n);
-        if (err != ESP_OK) {
-            return err;
-        }
-        err = esp_flash_write(nullptr, chunk, dst + off, n);
-        if (err != ESP_OK) {
-            return err;
-        }
-    }
-    return ESP_OK;
-}
-
-bool regions_overlap(uint32_t a, uint32_t asz, uint32_t b, uint32_t bsz)
-{
-    return a < b + bsz && b < a + asz;
-}
-
-/** Remove app at flash address; compact later ota_* slots; rewrite table. */
+/** Drop app from the partition table only (no flash compact — much faster). */
 esp_err_t delete_app_at(uint32_t remove_addr)
 {
     static FlashPart parts[kMaxParts];
-    static FlashPart kept[kMaxParts];
+    static FlashPart final_parts[kMaxParts];
     const size_t n = read_part_table(parts, kMaxParts);
     if (n == 0) {
         return ESP_ERR_NOT_FOUND;
     }
 
-    size_t kept_n = 0;
+    FlashPart otas[kMaxApps];
+    size_t ota_n = 0;
+    size_t final_n = 0;
     bool found = false;
+
     for (size_t i = 0; i < n; ++i) {
-        if (parts[i].type == ESP_PARTITION_TYPE_APP && is_ota_subtype(parts[i].subtype) &&
-            parts[i].address == remove_addr) {
-            found = true;
-            continue;
+        if (parts[i].type == ESP_PARTITION_TYPE_APP && is_ota_subtype(parts[i].subtype)) {
+            if (parts[i].address == remove_addr) {
+                found = true;
+                continue;
+            }
+            otas[ota_n++] = parts[i];
+        } else {
+            final_parts[final_n++] = parts[i];
         }
-        kept[kept_n++] = parts[i];
     }
     if (!found) {
         return ESP_ERR_NOT_FOUND;
     }
 
-    // Stable-partition: non-ota first (unchanged), then ota_* by address.
-    FlashPart otas[kMaxApps];
-    size_t ota_n = 0;
-    FlashPart other[kMaxParts];
-    size_t other_n = 0;
-    for (size_t i = 0; i < kept_n; ++i) {
-        if (kept[i].type == ESP_PARTITION_TYPE_APP && is_ota_subtype(kept[i].subtype)) {
-            otas[ota_n++] = kept[i];
-        } else {
-            other[other_n++] = kept[i];
-        }
-    }
     for (size_t i = 1; i < ota_n; ++i) {
         FlashPart key = otas[i];
         size_t j = i;
@@ -424,61 +387,8 @@ esp_err_t delete_app_at(uint32_t remove_addr)
         }
         otas[j] = key;
     }
-
-    uint32_t cursor = 0;
-    for (size_t i = 0; i < other_n; ++i) {
-        const uint32_t end = other[i].address + other[i].size;
-        cursor = cursor > end ? cursor : end;
-    }
-    cursor = align_up(cursor, kFlashAlign);
-
-    uint32_t high_water = 0;
-    for (size_t i = 0; i < n; ++i) {
-        const uint32_t end = parts[i].address + parts[i].size;
-        high_water = high_water > end ? high_water : end;
-    }
-    high_water = align_up(high_water, kFlashAlign);
-
-    uint32_t flash_size = 0;
-    if (esp_flash_get_size(nullptr, &flash_size) != ESP_OK) {
-        flash_size = 0x800000;
-    }
-
     for (size_t i = 0; i < ota_n; ++i) {
-        const uint32_t old_addr = otas[i].address;
-        const uint32_t sz = otas[i].size;
-        if (cursor != old_addr) {
-            esp_err_t err;
-            if (regions_overlap(cursor, sz, old_addr, sz)) {
-                const uint32_t bounce = high_water;
-                if (bounce + sz > flash_size) {
-                    ESP_LOGE(TAG, "no room to bounce compact copy");
-                    return ESP_ERR_NO_MEM;
-                }
-                err = copy_flash_region(bounce, old_addr, sz);
-                if (err != ESP_OK) {
-                    return err;
-                }
-                err = copy_flash_region(cursor, bounce, sz);
-            } else {
-                err = copy_flash_region(cursor, old_addr, sz);
-            }
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "compact copy failed: %s", esp_err_to_name(err));
-                return err;
-            }
-        }
-        otas[i].address = cursor;
         otas[i].subtype = static_cast<uint8_t>(ESP_PARTITION_SUBTYPE_APP_OTA_MIN + i);
-        cursor = align_up(cursor + sz, kFlashAlign);
-    }
-
-    FlashPart final_parts[kMaxParts];
-    size_t final_n = 0;
-    for (size_t i = 0; i < other_n; ++i) {
-        final_parts[final_n++] = other[i];
-    }
-    for (size_t i = 0; i < ota_n; ++i) {
         final_parts[final_n++] = otas[i];
     }
 
@@ -560,7 +470,6 @@ extern "C" void app_main(void)
                     redraw();
                 } else {
                     ESP_LOGI(TAG, "deleted %s — restarting", apps[selected].name);
-                    vTaskDelay(pdMS_TO_TICKS(200));
                     esp_restart();
                 }
             }
