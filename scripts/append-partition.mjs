@@ -175,7 +175,6 @@ export function appendOtaPartition(flash, appImage, opts = {}) {
   if (!entries.length) throw new Error("Empty partition table");
 
   const otas = entries.filter((e) => e.type === TYPE_APP && e.subtype >= SUB_OTA_0 && e.subtype <= SUB_OTA_0 + 15);
-  if (otas.length >= 16) throw new Error("max apps (16)");
 
   let end = 0;
   for (const e of entries) {
@@ -184,20 +183,76 @@ export function appendOtaPartition(flash, appImage, opts = {}) {
   end = alignUp(end, ALIGN);
 
   const size = measureAppSize(appImage);
-  if (end + size > FLASH_SIZE) {
-    throw new Error(`not enough space (need ${size}, free ${FLASH_SIZE - end})`);
-  }
-
-  const subtype = SUB_OTA_0 + otas.length;
   const label = pickPartitionLabel({
     name: opts.name,
     appImage,
     fileStem: opts.fileStem,
     index: otas.length,
   });
+  const existingIdx = entries.findIndex(
+    (e) =>
+      e.type === TYPE_APP &&
+      e.subtype >= SUB_OTA_0 &&
+      e.subtype <= SUB_OTA_0 + 15 &&
+      e.label.toLowerCase() === label.toLowerCase()
+  );
+
+  if (existingIdx >= 0) {
+    const existing = entries[existingIdx];
+    const isLast = existing.address + existing.size >= end;
+    let slotSize = existing.size;
+    if (size > existing.size) {
+      if (!isLast) {
+        throw new Error(
+          `"${existing.label}" is already installed but the update needs more space — re-flash Mini Launcher to repack`
+        );
+      }
+      if (existing.address + size > FLASH_SIZE) {
+        throw new Error(`not enough space (need ${size}, free ${FLASH_SIZE - existing.address})`);
+      }
+      slotSize = size;
+    }
+
+    const next = {
+      type: existing.type,
+      subtype: existing.subtype,
+      address: existing.address,
+      size: slotSize,
+      label: existing.label,
+      flags: existing.flags || 0,
+    };
+    next.raw = encodeEntry(next);
+
+    const newEntries = entries.map((e, i) => (i === existingIdx ? next : { raw: e.raw }));
+    const newTable = writeTable(newEntries);
+
+    let flashEnd = 0;
+    for (let i = 0; i < entries.length; i++) {
+      const e = i === existingIdx ? next : entries[i];
+      flashEnd = Math.max(flashEnd, e.address + e.size);
+    }
+
+    const out = Buffer.alloc(Math.max(flash.length, next.address + slotSize), 0xff);
+    flash.copy(out, 0, 0, Math.min(flash.length, out.length));
+    newTable.copy(out, TABLE_OFF);
+    appImage.copy(out, next.address);
+
+    return {
+      out,
+      entry: next,
+      freeAfter: FLASH_SIZE - flashEnd,
+      replaced: true,
+    };
+  }
+
+  if (otas.length >= 16) throw new Error("max apps (16)");
+  if (end + size > FLASH_SIZE) {
+    throw new Error(`not enough space (need ${size}, free ${FLASH_SIZE - end})`);
+  }
+
   const next = {
     type: TYPE_APP,
-    subtype,
+    subtype: SUB_OTA_0 + otas.length,
     address: end,
     size,
     label,
@@ -213,7 +268,7 @@ export function appendOtaPartition(flash, appImage, opts = {}) {
   newTable.copy(out, TABLE_OFF);
   appImage.copy(out, end);
 
-  return { out, entry: next, freeAfter: FLASH_SIZE - (end + size) };
+  return { out, entry: next, freeAfter: FLASH_SIZE - (end + size), replaced: false };
 }
 
 function main() {
@@ -226,11 +281,13 @@ function main() {
   const appRaw = readFileSync(resolve(appPath));
   const appImage = extractAppImage(appRaw);
   const stem = basename(appPath).replace(/\.bin$/i, "");
-  const { out, entry, freeAfter } = appendOtaPartition(launcher, appImage, { fileStem: stem });
+  const { out, entry, freeAfter, replaced } = appendOtaPartition(launcher, appImage, {
+    fileStem: stem,
+  });
   const outPath = resolve(outPathArg || `${launcherPath.replace(/\.bin$/i, "")}-with-${basename(appPath)}`);
   writeFileSync(outPath, out);
   console.log(
-    `Wrote ${outPath}\n  ${entry.label} subtype=0x${entry.subtype.toString(16)} @ 0x${entry.address.toString(16)} size=0x${entry.size.toString(16)}\n  app payload ${appImage.length} bytes; free after ${freeAfter} bytes`
+    `Wrote ${outPath}\n  ${replaced ? "replaced" : "added"} ${entry.label} subtype=0x${entry.subtype.toString(16)} @ 0x${entry.address.toString(16)} size=0x${entry.size.toString(16)}\n  app payload ${appImage.length} bytes; free after ${freeAfter} bytes`
   );
 }
 
