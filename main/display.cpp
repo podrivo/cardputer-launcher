@@ -1,7 +1,5 @@
 #include "pch_display.hpp"
 
-#include <cstdio>
-
 #include "display.hpp"
 #include "theme.hpp"
 
@@ -103,8 +101,8 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         return;
     }
 
-    // Show up to 6 rows centered on selection (full screen, no title).
-    constexpr size_t kVisible = 6;
+    // Full 135px height: top pad 8 + 7×18 row stride fits without a footer.
+    constexpr size_t kVisible = 7;
     size_t start = 0;
     if (count > kVisible && selected >= kVisible / 2) {
         start = selected - kVisible / 2;
@@ -122,14 +120,6 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         display.setCursor(8, y);
         display.printf("%s %s", on ? ">" : " ", apps[idx].name);
     }
-
-    char footer[24];
-    std::snprintf(footer, sizeof(footer), "%u / %u",
-                  static_cast<unsigned>(selected + 1),
-                  static_cast<unsigned>(count));
-    display.setTextColor(theme_col_dim, theme_col_bg);
-    display.setCursor(180, 120);
-    display.print(footer);
 }
 
 void display_show_booting(const char *name)
