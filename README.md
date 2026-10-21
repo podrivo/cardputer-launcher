@@ -12,6 +12,24 @@ Based on [cardputer-adv-template](https://github.com/podrivo/cardputer-adv-templ
 |-----|--------|
 | ← / → (also ↑ / ↓) | Browse installed apps |
 | Enter | Open (one-shot boot) |
+| ESC (hold) | Shortcuts + battery |
+
+## Battery colors
+
+Shown on the shortcuts screen (hold ESC). **Ok** uses the palette selection color, **critical** uses the palette error color, and **warn** is a warm mid tinted by both — so the chip follows `[` / `]` without losing status readability.
+
+| Level | Status |
+|-------|--------|
+| > 80% | Ok |
+| > 60% | Ok → warn |
+| > 40% | Ok → warn |
+| > 25% | Warn |
+| > 10% | Warn → critical |
+| ≤ 10% | Critical |
+
+Classic palette across the six bands (M5GFX **Font0**, native 240×135 nearest-scaled):
+
+![Classic palette battery bands](docs/battery/classic-bands.png)
 
 ## Prerequisites
 
