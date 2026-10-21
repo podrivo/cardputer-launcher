@@ -60,6 +60,11 @@ constexpr size_t kMaxParts = 32;
 constexpr uint32_t kEraseAlign = 0x1000;
 constexpr TickType_t kDeletingMinTicks = pdMS_TO_TICKS(800);
 
+// Hold-to-scroll: wait kRepeatDelay, then repeat from kRepeatStart, speeding up to kRepeatFastest.
+constexpr TickType_t kRepeatDelay = pdMS_TO_TICKS(400);
+constexpr TickType_t kRepeatStart = pdMS_TO_TICKS(150);
+constexpr TickType_t kRepeatFastest = pdMS_TO_TICKS(40);
+
 struct AppEntry {
     const esp_partition_t *part;
     char name[kNameLen];
@@ -442,12 +447,46 @@ extern "C" void app_main(void)
     redraw();
     ESP_LOGI(TAG, "%u app(s)", static_cast<unsigned>(count));
 
+    auto step = [&](uint8_t key) {
+        if (key == KEY_LEFT || key == KEY_UP) {
+            if (selected == 0) {
+                return;
+            }
+            --selected;
+        } else {
+            if (selected + 1 >= count) {
+                return;
+            }
+            ++selected;
+        }
+        redraw();
+    };
+
+    uint8_t held_key = 0;
+    TickType_t next_repeat = 0;
+    TickType_t repeat_interval = 0;
+
     for (;;) {
         uint8_t key = 0;
         bool pressed = false;
         if (!kbd_poll_event(&key, &pressed)) {
-            vTaskDelay(pdMS_TO_TICKS(20));
+            if (held_key != 0 && !show_shortcuts && !confirm_delete && count > 0) {
+                const TickType_t now = xTaskGetTickCount();
+                if (static_cast<int32_t>(now - next_repeat) >= 0) {
+                    step(held_key);
+                    repeat_interval = repeat_interval * 4 / 5;
+                    if (repeat_interval < kRepeatFastest) {
+                        repeat_interval = kRepeatFastest;
+                    }
+                    next_repeat = now + repeat_interval;
+                }
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
             continue;
+        }
+
+        if (!pressed && key == held_key) {
+            held_key = 0;
         }
 
         if (key == KEY_ESC) {
@@ -514,13 +553,12 @@ extern "C" void app_main(void)
         switch (key) {
         case KEY_LEFT:
         case KEY_UP:
-            selected = (selected == 0) ? count - 1 : selected - 1;
-            need_redraw = true;
-            break;
         case KEY_RIGHT:
         case KEY_DOWN:
-            selected = (selected + 1) % count;
-            need_redraw = true;
+            step(key);
+            held_key = key;
+            repeat_interval = kRepeatStart;
+            next_repeat = xTaskGetTickCount() + kRepeatDelay;
             break;
         case KEY_DEL:
             confirm_delete = true;

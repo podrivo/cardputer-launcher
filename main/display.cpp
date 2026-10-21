@@ -81,8 +81,11 @@ void display_show_shortcuts()
     for (size_t i = 0; i < theme_shortcuts_count; ++i) {
         const int y = 8 + static_cast<int>(i) * stride;
         display.setTextColor(theme_col_fg, theme_col_bg);
-        display.setCursor(kKeysX, y);
-        display.print(theme_shortcuts[i].keys);
+        // drawChar, not print: print drops glyphs below 0x20 (the font's arrows).
+        int x = kKeysX;
+        for (const char *k = theme_shortcuts[i].keys; *k; ++k) {
+            x += display.drawChar(static_cast<uint8_t>(*k), x, y);
+        }
         display.setCursor(kLabelX, y);
         display.print(theme_shortcuts[i].label);
     }
@@ -130,7 +133,10 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         const bool on = idx == selected;
         display.setTextColor(on ? theme_col_sel : theme_col_fg, theme_col_bg);
         display.setCursor(8, y);
-        display.printf("%s%s", apps[idx].name, on ? " <" : "");
+        display.print(apps[idx].name);
+        if (on) {
+            display.drawChar(0x1B, display.getCursorX() + display.fontWidth(), y);
+        }
     }
 }
 

@@ -10,7 +10,7 @@ uint16_t theme_col_err = 0xF800;  // red
 const char *theme_title = "Mini Launcher";
 const char *theme_empty = "No apps installed.";
 const theme_shortcut theme_shortcuts[] = {
-    {"^ v", "Browse"},
+    {"\x18 \x19", "Browse"},
     {"- +", "Brightness"},
     {"OK", "Open"},
     {"ESC", "Close"},
