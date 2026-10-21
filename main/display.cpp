@@ -58,10 +58,18 @@ void draw_multiline_vcenter(const char *text, int x, uint16_t color)
     const int fh = display.fontHeight();
     const int stride = fh + 4;
     const int lines = count_lines(text);
-    // Height is first glyph + gaps between lines — not lines * stride.
     const int block_h = fh + (lines - 1) * stride;
     const int y = (display.height() - block_h) / 2;
     draw_multiline(text, x, y, stride, color);
+}
+
+void draw_centered(const char *text, int y, uint16_t color)
+{
+    display.setTextSize(1);
+    display.setTextColor(color, theme_col_bg);
+    const int tw = display.textWidth(text);
+    display.setCursor((display.width() - tw) / 2, y);
+    display.print(text);
 }
 
 } // namespace
@@ -88,12 +96,9 @@ int display_adjust_brightness(int delta_steps)
 void display_show_splash()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextColor(theme_col_fg, theme_col_bg);
-    display.setTextSize(2);
-    const int tw = display.textWidth(theme_title);
+    display.setTextSize(1);
     const int th = display.fontHeight();
-    display.setCursor((display.width() - tw) / 2, (display.height() - th) / 2);
-    display.print(theme_title);
+    draw_centered(theme_title, (display.height() - th) / 2, theme_col_fg);
 }
 
 void display_show_shortcuts()
@@ -126,7 +131,6 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         return;
     }
 
-    // Full 135px height: top pad 8 + 7×18 row stride fits without a footer.
     constexpr size_t kVisible = 7;
     size_t start = 0;
     if (count > kVisible && selected >= kVisible / 2) {
@@ -150,48 +154,44 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
 void display_show_delete_confirm(const char *name)
 {
     display.fillScreen(theme_col_bg);
-    display.setTextColor(theme_col_fg, theme_col_bg);
-    display.setTextSize(2);
-    display.setCursor(8, 28);
-    display.print(theme_delete_title);
     display.setTextSize(1);
+    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setCursor(8, 8);
+    display.print(theme_delete_title);
     display.setTextColor(theme_col_sel, theme_col_bg);
-    display.setCursor(8, 60);
+    display.setCursor(8, 28);
     display.print(name ? name : "");
     display.setTextColor(theme_col_dim, theme_col_bg);
-    display.setCursor(8, 100);
+    display.setCursor(8, 120);
     display.print(theme_delete_hint);
 }
 
 void display_show_deleting(const char *name)
 {
+    (void)name;
     display.fillScreen(theme_col_bg);
-    display.setTextColor(theme_col_fg, theme_col_bg);
-    display.setTextSize(2);
-    display.setCursor(8, 40);
-    display.print(theme_deleting);
     display.setTextSize(1);
-    display.setCursor(8, 80);
-    display.print(name ? name : "");
+    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setCursor(8, 8);
+    display.print(theme_deleting);
 }
 
 void display_show_delete_fail()
 {
     display.fillScreen(theme_col_bg);
+    display.setTextSize(1);
     display.setTextColor(theme_col_err, theme_col_bg);
-    display.setTextSize(2);
-    display.setCursor(8, 50);
+    display.setCursor(8, 60);
     display.print(theme_delete_fail);
 }
 
 void display_show_booting(const char *name)
 {
     display.fillScreen(theme_col_bg);
+    display.setTextSize(1);
     display.setTextColor(theme_col_fg, theme_col_bg);
-    display.setTextSize(2);
     display.setCursor(8, 40);
     display.print(theme_booting);
-    display.setTextSize(1);
-    display.setCursor(8, 80);
+    display.setCursor(8, 60);
     display.print(name ? name : "");
 }
