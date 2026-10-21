@@ -130,7 +130,7 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         const bool on = idx == selected;
         display.setTextColor(on ? theme_col_sel : theme_col_fg, theme_col_bg);
         display.setCursor(8, y);
-        display.printf("%s %s", on ? ">" : " ", apps[idx].name);
+        display.printf("%s%s", apps[idx].name, on ? " <" : "");
     }
 }
 
