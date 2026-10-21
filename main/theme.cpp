@@ -12,7 +12,12 @@ const char *theme_empty = "No apps - add via\ninstallers site";
 const char *theme_shortcuts =
     "< > browse\n"
     "Enter open\n"
+    "Del delete\n"
     "- + brightness\n"
     "Esc close";
 const char *theme_kbd_error = "No TCA8418";
 const char *theme_booting = "Starting...";
+const char *theme_delete_title = "Delete?";
+const char *theme_delete_hint = "Del cancel  Enter OK";
+const char *theme_deleting = "Deleting...";
+const char *theme_delete_fail = "Delete failed";

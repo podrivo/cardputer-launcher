@@ -13,3 +13,7 @@ extern const char *theme_empty;
 extern const char *theme_shortcuts;
 extern const char *theme_kbd_error;
 extern const char *theme_booting;
+extern const char *theme_delete_title;
+extern const char *theme_delete_hint;
+extern const char *theme_deleting;
+extern const char *theme_delete_fail;

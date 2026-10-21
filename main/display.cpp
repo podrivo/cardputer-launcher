@@ -1,5 +1,7 @@
 #include "pch_display.hpp"
 
+#include <cstdio>
+
 #include "display.hpp"
 #include "theme.hpp"
 
@@ -143,6 +145,43 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         display.setCursor(8, y);
         display.printf("%s %s", on ? ">" : " ", apps[idx].name);
     }
+}
+
+void display_show_delete_confirm(const char *name)
+{
+    display.fillScreen(theme_col_bg);
+    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setTextSize(2);
+    display.setCursor(8, 28);
+    display.print(theme_delete_title);
+    display.setTextSize(1);
+    display.setTextColor(theme_col_sel, theme_col_bg);
+    display.setCursor(8, 60);
+    display.print(name ? name : "");
+    display.setTextColor(theme_col_dim, theme_col_bg);
+    display.setCursor(8, 100);
+    display.print(theme_delete_hint);
+}
+
+void display_show_deleting(const char *name)
+{
+    display.fillScreen(theme_col_bg);
+    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setTextSize(2);
+    display.setCursor(8, 40);
+    display.print(theme_deleting);
+    display.setTextSize(1);
+    display.setCursor(8, 80);
+    display.print(name ? name : "");
+}
+
+void display_show_delete_fail()
+{
+    display.fillScreen(theme_col_bg);
+    display.setTextColor(theme_col_err, theme_col_bg);
+    display.setTextSize(2);
+    display.setCursor(8, 50);
+    display.print(theme_delete_fail);
 }
 
 void display_show_booting(const char *name)
