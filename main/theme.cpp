@@ -10,11 +10,11 @@ uint16_t theme_col_err = 0xF800;  // red
 const char *theme_title = "Mini Launcher";
 const char *theme_empty = "No apps installed.";
 const char *theme_shortcuts =
-    "< > browse\n"
-    "Enter open\n"
-    "Del delete\n"
-    "- + brightness\n"
-    "Esc close";
+    "< > Browse\n"
+    "OK Open\n"
+    "DEL Delete\n"
+    "- + Brightness\n"
+    "ESC Close";
 const char *theme_kbd_error = "No TCA8418";
 const char *theme_booting = "Starting...";
 const char *theme_delete_hint = "DEL Cancel  OK Confirm";

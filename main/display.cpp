@@ -19,17 +19,6 @@ void apply_brightness()
     display.setBrightness(static_cast<uint8_t>((brightness_percent * 255) / kBrightMax));
 }
 
-int count_lines(const char *text)
-{
-    int n = 1;
-    for (const char *p = text; *p; ++p) {
-        if (*p == '\n') {
-            ++n;
-        }
-    }
-    return n;
-}
-
 void draw_multiline(const char *text, int x, int y, int stride, uint16_t color)
 {
     display.setTextColor(color, theme_col_bg);
@@ -50,17 +39,6 @@ void draw_multiline(const char *text, int x, int y, int stride, uint16_t color)
             ++p;
         }
     }
-}
-
-void draw_multiline_vcenter(const char *text, int x, uint16_t color)
-{
-    display.setTextSize(1);
-    const int fh = display.fontHeight();
-    const int stride = fh + 4;
-    const int lines = count_lines(text);
-    const int block_h = fh + (lines - 1) * stride;
-    const int y = (display.height() - block_h) / 2;
-    draw_multiline(text, x, y, stride, color);
 }
 
 } // namespace
@@ -96,7 +74,9 @@ void display_show_splash()
 void display_show_shortcuts()
 {
     display.fillScreen(theme_col_bg);
-    draw_multiline_vcenter(theme_shortcuts, 8, theme_col_dim);
+    display.setTextSize(1);
+    const int stride = display.fontHeight() + 4;
+    draw_multiline(theme_shortcuts, 8, 8, stride, theme_col_dim);
 }
 
 void display_show_kbd_error()

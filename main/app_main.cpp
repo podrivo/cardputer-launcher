@@ -118,16 +118,14 @@ bool kbd_init()
     return true;
 }
 
-bool kbd_poll_press(uint8_t *keycode)
+bool kbd_poll_event(uint8_t *keycode, bool *pressed)
 {
     uint8_t ev = 0;
     if (tca_read(TCA_REG_KEY_EVENT_A, &ev) != ESP_OK || ev == 0) {
         return false;
     }
     tca_write(TCA_REG_INT_STAT, 0x0F);
-    if ((ev & 0x80) == 0) {
-        return false;
-    }
+    *pressed = (ev & 0x80) != 0;
     *keycode = ev & 0x7F;
     return true;
 }
@@ -445,8 +443,26 @@ extern "C" void app_main(void)
 
     for (;;) {
         uint8_t key = 0;
-        if (!kbd_poll_press(&key)) {
+        bool pressed = false;
+        if (!kbd_poll_event(&key, &pressed)) {
             vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        if (key == KEY_ESC) {
+            if (confirm_delete) {
+                if (pressed) {
+                    confirm_delete = false;
+                    redraw();
+                }
+            } else if (show_shortcuts != pressed) {
+                show_shortcuts = pressed;
+                redraw();
+            }
+            continue;
+        }
+
+        if (!pressed) {
             continue;
         }
 
@@ -456,7 +472,7 @@ extern "C" void app_main(void)
         }
 
         if (confirm_delete) {
-            if (key == KEY_DEL || key == KEY_ESC) {
+            if (key == KEY_DEL) {
                 confirm_delete = false;
                 redraw();
             } else if (key == KEY_ENTER && count > 0) {
@@ -473,12 +489,6 @@ extern "C" void app_main(void)
                     esp_restart();
                 }
             }
-            continue;
-        }
-
-        if (key == KEY_ESC) {
-            show_shortcuts = !show_shortcuts;
-            redraw();
             continue;
         }
 
