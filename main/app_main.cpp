@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <strings.h>
 
 #include "bootloader_common.h"
 #include "driver/i2c_master.h"
@@ -44,7 +45,9 @@ constexpr uint8_t TCA_REG_KP_GPIO3 = 0x1F;
 // Physical keycodes (ADV TCA8418 scan, raw events)
 constexpr uint8_t KEY_ESC = 1;
 constexpr uint8_t KEY_MINUS = 55;
+constexpr uint8_t KEY_LBRACKET = 56;
 constexpr uint8_t KEY_PLUS = 61;
+constexpr uint8_t KEY_RBRACKET = 62;
 constexpr uint8_t KEY_DEL = 65;
 constexpr uint8_t KEY_LEFT = 54;
 constexpr uint8_t KEY_RIGHT = 64;
@@ -228,6 +231,15 @@ size_t discover_apps(AppEntry *out, size_t cap)
     }
     if (it) {
         esp_partition_iterator_release(it);
+    }
+    for (size_t i = 1; i < n; ++i) {
+        AppEntry key = out[i];
+        size_t j = i;
+        while (j > 0 && strcasecmp(out[j - 1].name, key.name) > 0) {
+            out[j] = out[j - 1];
+            --j;
+        }
+        out[j] = key;
     }
     return n;
 }
@@ -510,6 +522,12 @@ extern "C" void app_main(void)
 
         if (key == KEY_MINUS || key == KEY_PLUS) {
             display_adjust_brightness(key == KEY_PLUS ? 1 : -1);
+            continue;
+        }
+
+        if (key == KEY_LBRACKET || key == KEY_RBRACKET) {
+            theme_cycle_palette(key == KEY_RBRACKET ? 1 : -1);
+            redraw();
             continue;
         }
 

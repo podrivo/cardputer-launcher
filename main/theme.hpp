@@ -11,6 +11,8 @@ extern uint16_t theme_col_err;
 
 // Pick a random palette for this boot (call before first draw).
 void theme_pick_palette();
+// Step through palettes (negative = previous).
+void theme_cycle_palette(int delta);
 
 struct theme_shortcut {
     const char *keys;
