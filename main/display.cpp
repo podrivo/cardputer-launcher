@@ -63,15 +63,6 @@ void draw_multiline_vcenter(const char *text, int x, uint16_t color)
     draw_multiline(text, x, y, stride, color);
 }
 
-void draw_centered(const char *text, int y, uint16_t color)
-{
-    display.setTextSize(1);
-    display.setTextColor(color, theme_col_bg);
-    const int tw = display.textWidth(text);
-    display.setCursor((display.width() - tw) / 2, y);
-    display.print(text);
-}
-
 } // namespace
 
 void display_init()
@@ -96,9 +87,10 @@ int display_adjust_brightness(int delta_steps)
 void display_show_splash()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
-    const int th = display.fontHeight();
-    draw_centered(theme_title, (display.height() - th) / 2, theme_col_fg);
+    display.setTextSize(2);
+    display.setTextColor(theme_col_fg, theme_col_bg);
+    display.setCursor(8, 8);
+    display.print(theme_title);
 }
 
 void display_show_shortcuts()
@@ -119,7 +111,9 @@ void display_show_kbd_error()
 void display_show_empty()
 {
     display.fillScreen(theme_col_bg);
-    draw_multiline_vcenter(theme_empty, 8, theme_col_dim);
+    display.setTextSize(1);
+    const int stride = display.fontHeight() + 4;
+    draw_multiline(theme_empty, 8, 8, stride, theme_col_fg);
 }
 
 void display_show_list(const launcher_app_view *apps, size_t count, size_t selected)
@@ -151,17 +145,21 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
     }
 }
 
-void display_show_delete_confirm(const char *name)
+void display_show_delete_confirm(const char *name, uint32_t size_bytes)
 {
     display.fillScreen(theme_col_bg);
     display.setTextSize(1);
     display.setTextColor(theme_col_fg, theme_col_bg);
     display.setCursor(8, 8);
     display.print(theme_delete_title);
-    display.setTextColor(theme_col_sel, theme_col_bg);
     display.setCursor(8, 28);
     display.print(name ? name : "");
+    char size_line[24];
+    std::snprintf(size_line, sizeof(size_line), "%u KB",
+                  static_cast<unsigned>((size_bytes + 1023u) / 1024u));
     display.setTextColor(theme_col_dim, theme_col_bg);
+    display.setCursor(8, 48);
+    display.print(size_line);
     display.setCursor(8, 120);
     display.print(theme_delete_hint);
 }

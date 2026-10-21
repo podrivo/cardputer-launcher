@@ -431,7 +431,7 @@ extern "C" void app_main(void)
 
     auto redraw = [&]() {
         if (confirm_delete && count > 0) {
-            display_show_delete_confirm(apps[selected].name);
+            display_show_delete_confirm(apps[selected].name, apps[selected].part->size);
         } else if (show_shortcuts) {
             display_show_shortcuts();
         } else if (count == 0) {
