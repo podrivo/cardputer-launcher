@@ -6,6 +6,8 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 #include "display.hpp"
 #include "theme.hpp"
@@ -32,15 +34,72 @@ void set_body_font()
 }
 
 // Cardputer ADV: BAT+ → 100k → GPIO10/ADC1_CH9 → 100k → GND (docs + schematic).
+// TP4057 CHRG/STDBY are not wired to the ESP32, so charge state is inferred.
 constexpr adc_unit_t kBatAdcUnit = ADC_UNIT_1;
 constexpr adc_channel_t kBatAdcChan = ADC_CHANNEL_9;
 constexpr adc_atten_t kBatAdcAtten = ADC_ATTEN_DB_12;
-constexpr int kBatMvEmpty = 3300;
-constexpr int kBatMvFull = 4150;
 
 adc_oneshot_unit_handle_t bat_adc = nullptr;
 adc_cali_handle_t bat_cali = nullptr;
 bool bat_ready = false;
+
+// Soft state + NVS. USB plug-in usually resets the S3, so RAM alone cannot
+// hold SoC across the unplug→plug transition the user actually notices.
+int bat_mv_filt = 0;
+int bat_pct_disp = -1;
+bool bat_charging = false;
+bool bat_have_rest = false;
+bool bat_nvs_tried = false;
+
+constexpr char kBatNvsNs[] = "bat";
+constexpr char kBatNvsKey[] = "rest_pct";
+
+void bat_nvs_ensure()
+{
+    if (bat_nvs_tried) {
+        return;
+    }
+    bat_nvs_tried = true;
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        return;
+    }
+    nvs_handle_t h = 0;
+    if (nvs_open(kBatNvsNs, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    uint8_t v = 0;
+    if (nvs_get_u8(h, kBatNvsKey, &v) == ESP_OK && v <= 100) {
+        bat_pct_disp = v;
+        bat_have_rest = true;
+    }
+    nvs_close(h);
+}
+
+void bat_nvs_save(int pct)
+{
+    if (pct < 0 || pct > 100) {
+        return;
+    }
+    bat_nvs_ensure();
+    nvs_handle_t h = 0;
+    if (nvs_open(kBatNvsNs, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    uint8_t cur = 255;
+    if (nvs_get_u8(h, kBatNvsKey, &cur) == ESP_OK && cur == static_cast<uint8_t>(pct)) {
+        nvs_close(h);
+        return;
+    }
+    if (nvs_set_u8(h, kBatNvsKey, static_cast<uint8_t>(pct)) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+}
 
 bool ensure_battery_adc()
 {
@@ -72,7 +131,7 @@ bool ensure_battery_adc()
     return true;
 }
 
-int read_battery_percent()
+int read_battery_mv()
 {
     if (!ensure_battery_adc()) {
         return -1;
@@ -96,14 +155,88 @@ int read_battery_percent()
         // ~0–3100 mV at 12 dB atten when eFuse calibration is missing.
         half_mv = (raw * 3100) / 4095;
     }
-    const int mv = half_mv * 2;
-    int pct = ((mv - kBatMvEmpty) * 100) / (kBatMvFull - kBatMvEmpty);
-    if (pct < 0) {
-        pct = 0;
-    } else if (pct > 100) {
-        pct = 100;
+    return half_mv * 2;
+}
+
+// Piecewise LiPo under light load (Cardputer ~120 mA). Better than linear
+// 3.3–4.15 V: most capacity sits in a narrow mid band.
+int voltage_to_percent(int mv)
+{
+    static constexpr struct {
+        int mv;
+        int pct;
+    } kCurve[] = {
+        {3300, 0},  {3450, 5},  {3550, 10}, {3650, 20}, {3720, 30},
+        {3780, 40}, {3830, 50}, {3880, 60}, {3930, 70}, {3980, 80},
+        {4050, 90}, {4120, 97}, {4180, 100},
+    };
+    if (mv <= kCurve[0].mv) {
+        return 0;
     }
-    return pct;
+    constexpr size_t n = sizeof(kCurve) / sizeof(kCurve[0]);
+    if (mv >= kCurve[n - 1].mv) {
+        return 100;
+    }
+    for (size_t i = 1; i < n; ++i) {
+        if (mv <= kCurve[i].mv) {
+            const int mv0 = kCurve[i - 1].mv;
+            const int mv1 = kCurve[i].mv;
+            const int p0 = kCurve[i - 1].pct;
+            const int p1 = kCurve[i].pct;
+            return p0 + ((mv - mv0) * (p1 - p0)) / (mv1 - mv0);
+        }
+    }
+    return 100;
+}
+
+struct battery_reading {
+    int pct; // 0–100 when known; ignore when !known
+    bool charging;
+    bool known;
+};
+
+// Infer charging: charger lifts BAT+; CHRG pin is unavailable on this board.
+battery_reading read_battery()
+{
+    bat_nvs_ensure();
+
+    const int mv_raw = read_battery_mv();
+    if (mv_raw < 0) {
+        return {-1, false, false};
+    }
+
+    const int prev = bat_mv_filt;
+    if (bat_mv_filt <= 0) {
+        bat_mv_filt = mv_raw;
+    } else {
+        // EMA ~1/4 toward new sample — calm ADC noise without lagging forever.
+        bat_mv_filt += (mv_raw - bat_mv_filt) / 4;
+    }
+    const int mv = bat_mv_filt;
+    const int pct_now = voltage_to_percent(mv);
+
+    // Absolute: under load a cell rarely sits ≥4.05 V unless a charger is on.
+    // Delta: plug-in jumps the rail faster than chemistry can.
+    const bool rise = prev > 0 && mv_raw >= prev + 100;
+    const bool high = mv >= 4050 || mv_raw >= 4080;
+    if (high || (rise && mv_raw >= 3780)) {
+        bat_charging = true;
+    } else if (mv <= 3980 && mv_raw <= 4000 && !rise) {
+        bat_charging = false;
+    }
+
+    if (bat_charging) {
+        // Never trust inflated charge voltage as SoC. Use last rest (NVS/RAM).
+        if (bat_have_rest && bat_pct_disp >= 0) {
+            return {bat_pct_disp, true, true};
+        }
+        return {0, true, false};
+    }
+
+    bat_have_rest = true;
+    bat_pct_disp = pct_now;
+    bat_nvs_save(pct_now);
+    return {bat_pct_disp, false, true};
 }
 
 uint16_t lerp_rgb565(uint16_t a, uint16_t b, int t)
@@ -153,15 +286,28 @@ uint16_t battery_status_color(int pct)
     return critical;
 }
 
+void draw_charge_bolt(int x, int y, uint16_t color)
+{
+    // Compact 5×7 bolt inside the cell.
+    display.drawLine(x + 2, y, x, y + 3, color);
+    display.drawLine(x, y + 3, x + 3, y + 3, color);
+    display.drawLine(x + 3, y + 3, x + 1, y + 6, color);
+}
+
 void draw_battery_indicator()
 {
-    const int pct = read_battery_percent();
-    if (pct < 0) {
+    const battery_reading bat = read_battery();
+    if (!bat.known && !bat.charging) {
         return;
     }
     set_body_font();
     char label[16];
-    snprintf(label, sizeof(label), "%d%%", pct);
+    if (bat.known) {
+        snprintf(label, sizeof(label), "%d%%", bat.pct);
+    } else {
+        // Charging, but USB reset wiped RAM and we have no saved rest yet.
+        snprintf(label, sizeof(label), "--");
+    }
 
     constexpr int kIconW = 18;
     constexpr int kIconH = 8;
@@ -172,7 +318,8 @@ void draw_battery_indicator()
     const int total_w = text_w + kGap + kIconW + kTipW;
     const int x0 = display.width() - kPad - total_w;
     const int y0 = display.height() - kPad - kIconH;
-    const uint16_t fill = battery_status_color(pct);
+    const uint16_t fill =
+        bat.known ? battery_status_color(bat.pct) : theme_col_sel;
 
     display.setTextColor(fill, theme_col_bg);
     display.setCursor(x0, y0);
@@ -181,10 +328,17 @@ void draw_battery_indicator()
     const int ix = x0 + text_w + kGap;
     display.drawRect(ix, y0, kIconW, kIconH, fill);
     display.fillRect(ix + kIconW, y0 + 2, kTipW, kIconH - 4, fill);
-    const int inner = kIconW - 2;
-    const int fill_w = (inner * pct) / 100;
-    if (fill_w > 0) {
-        display.fillRect(ix + 1, y0 + 1, fill_w, kIconH - 2, fill);
+    if (bat.known) {
+        const int inner = kIconW - 2;
+        const int fill_w = (inner * bat.pct) / 100;
+        if (fill_w > 0) {
+            display.fillRect(ix + 1, y0 + 1, fill_w, kIconH - 2, fill);
+        }
+    }
+    if (bat.charging) {
+        // Clear a notch so the bolt stays readable over the fill.
+        display.fillRect(ix + 6, y0 + 1, 6, kIconH - 2, theme_col_bg);
+        draw_charge_bolt(ix + 7, y0 + 1, fill);
     }
 }
 
