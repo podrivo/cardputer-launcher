@@ -58,6 +58,7 @@ constexpr uint16_t kPartMagic = 0x50aa;
 constexpr uint16_t kMd5Magic = 0xebeb;
 constexpr size_t kMaxParts = 32;
 constexpr uint32_t kEraseAlign = 0x1000;
+constexpr TickType_t kDeletingMinTicks = pdMS_TO_TICKS(800);
 
 struct AppEntry {
     const esp_partition_t *part;
@@ -410,7 +411,7 @@ extern "C" void app_main(void)
 
     ensure_factory_boot_target();
 
-    const size_t count = discover_apps(apps, kMaxApps);
+    size_t count = discover_apps(apps, kMaxApps);
     for (size_t i = 0; i < count; ++i) {
         views[i].name = apps[i].name;
     }
@@ -476,18 +477,31 @@ extern "C" void app_main(void)
                 confirm_delete = false;
                 redraw();
             } else if (key == KEY_ENTER && count > 0) {
-                display_show_deleting(apps[selected].name);
+                display_show_deleting();
+                const TickType_t started = xTaskGetTickCount();
                 const esp_err_t err = delete_app_at(apps[selected].part->address);
+                const TickType_t elapsed = xTaskGetTickCount() - started;
+                if (elapsed < kDeletingMinTicks) {
+                    vTaskDelay(kDeletingMinTicks - elapsed);
+                }
                 if (err != ESP_OK) {
                     ESP_LOGE(TAG, "delete failed: %s", esp_err_to_name(err));
                     display_show_delete_fail();
                     vTaskDelay(pdMS_TO_TICKS(1200));
-                    confirm_delete = false;
-                    redraw();
                 } else {
-                    ESP_LOGI(TAG, "deleted %s — restarting", apps[selected].name);
-                    esp_restart();
+                    // Remaining apps keep their flash addresses, so the cached entries stay bootable.
+                    ESP_LOGI(TAG, "deleted %s", apps[selected].name);
+                    for (size_t i = selected; i + 1 < count; ++i) {
+                        apps[i] = apps[i + 1];
+                        views[i].name = apps[i].name;
+                    }
+                    --count;
+                    if (selected >= count && selected > 0) {
+                        --selected;
+                    }
                 }
+                confirm_delete = false;
+                redraw();
             }
             continue;
         }

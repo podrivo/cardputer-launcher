@@ -146,9 +146,8 @@ void display_show_delete_confirm(const char *name)
     display.print(theme_delete_hint);
 }
 
-void display_show_deleting(const char *name)
+void display_show_deleting()
 {
-    (void)name;
     display.fillScreen(theme_col_bg);
     display.setTextSize(1);
     display.setTextColor(theme_col_fg, theme_col_bg);
