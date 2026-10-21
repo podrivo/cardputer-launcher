@@ -19,10 +19,17 @@ void apply_brightness()
     display.setBrightness(static_cast<uint8_t>((brightness_percent * 255) / kBrightMax));
 }
 
+constexpr int kBodyFontPx = 8;
+
+void set_body_font()
+{
+    display.setTextSize(static_cast<float>(kBodyFontPx) / fonts::Font0.height);
+}
+
 void draw_multiline(const char *text, int x, int y, int stride, uint16_t color)
 {
     display.setTextColor(color, theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     int cy = y;
     const char *p = text;
     char line[48];
@@ -65,7 +72,8 @@ int display_adjust_brightness(int delta_steps)
 void display_show_splash()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(2);
+    constexpr int kFontPx = 16;
+    display.setTextSize(static_cast<float>(kFontPx) / fonts::Font0.height);
     display.setTextColor(theme_col_fg, theme_col_bg);
     display.setCursor(8, 8);
     display.print(theme_title);
@@ -74,7 +82,7 @@ void display_show_splash()
 void display_show_shortcuts()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     const int stride = display.fontHeight() + 4;
     constexpr int kKeysX = 8;
     constexpr int kLabelX = 40;
@@ -95,7 +103,7 @@ void display_show_kbd_error()
 {
     display.fillScreen(theme_col_bg);
     display.setTextColor(theme_col_err, theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     display.setCursor(8, 60);
     display.print(theme_kbd_error);
 }
@@ -103,7 +111,7 @@ void display_show_kbd_error()
 void display_show_empty()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     const int stride = display.fontHeight() + 4;
     draw_multiline(theme_empty, 8, 8, stride, theme_col_fg);
 }
@@ -151,7 +159,7 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
 void display_show_delete_confirm(const char *name)
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     display.setTextColor(theme_col_err, theme_col_bg);
     display.setCursor(8, 8);
     display.printf("Delete %s?", name ? name : "");
@@ -163,7 +171,7 @@ void display_show_delete_confirm(const char *name)
 void display_show_deleting()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     display.setTextColor(theme_col_fg, theme_col_bg);
     display.setCursor(8, 8);
     display.print(theme_deleting);
@@ -172,7 +180,7 @@ void display_show_deleting()
 void display_show_delete_fail()
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     display.setTextColor(theme_col_err, theme_col_bg);
     display.setCursor(8, 60);
     display.print(theme_delete_fail);
@@ -181,7 +189,7 @@ void display_show_delete_fail()
 void display_show_booting(const char *name)
 {
     display.fillScreen(theme_col_bg);
-    display.setTextSize(1);
+    set_body_font();
     display.setTextColor(theme_col_fg, theme_col_bg);
     display.setCursor(8, 40);
     display.print(theme_booting);
