@@ -76,7 +76,16 @@ void display_show_shortcuts()
     display.fillScreen(theme_col_bg);
     display.setTextSize(1);
     const int stride = display.fontHeight() + 4;
-    draw_multiline(theme_shortcuts, 8, 8, stride, theme_col_dim);
+    constexpr int kKeysX = 8;
+    constexpr int kLabelX = 40;
+    for (size_t i = 0; i < theme_shortcuts_count; ++i) {
+        const int y = 8 + static_cast<int>(i) * stride;
+        display.setTextColor(theme_col_fg, theme_col_bg);
+        display.setCursor(kKeysX, y);
+        display.print(theme_shortcuts[i].keys);
+        display.setCursor(kLabelX, y);
+        display.print(theme_shortcuts[i].label);
+    }
 }
 
 void display_show_kbd_error()
