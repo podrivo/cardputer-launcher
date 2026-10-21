@@ -117,19 +117,27 @@ void display_show_list(const launcher_app_view *apps, size_t count, size_t selec
         return;
     }
 
-    constexpr size_t kVisible = 7;
+    constexpr int kListTop = 8;
+    constexpr int kListFontPx = 16;
+    constexpr int kListStride = (kListFontPx * 150) / 100;
+    display.setTextSize(static_cast<float>(kListFontPx) / fonts::Font0.height);
+
+    const size_t kVisible =
+        static_cast<size_t>((display.height() - kListTop) / kListStride);
     size_t start = 0;
-    if (count > kVisible && selected >= kVisible / 2) {
+    if (kVisible > 0 && count > kVisible && selected >= kVisible / 2) {
         start = selected - kVisible / 2;
         if (start + kVisible > count) {
             start = count - kVisible;
         }
     }
 
-    display.setTextSize(1);
-    for (size_t i = 0; i < kVisible && start + i < count; ++i) {
+    for (size_t i = 0; start + i < count; ++i) {
+        const int y = kListTop + static_cast<int>(i) * kListStride;
+        if (y >= display.height()) {
+            break;
+        }
         const size_t idx = start + i;
-        const int y = 8 + static_cast<int>(i) * 18;
         const bool on = idx == selected;
         display.setTextColor(on ? theme_col_sel : theme_col_fg, theme_col_bg);
         display.setCursor(8, y);
