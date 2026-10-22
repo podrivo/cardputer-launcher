@@ -11,7 +11,10 @@ Based on [cardputer-adv-template](https://github.com/podrivo/cardputer-adv-templ
 | Key | Action |
 |-----|--------|
 | ← / → (also ↑ / ↓) | Browse installed apps |
-| Enter | Open (one-shot boot) |
+| − / + | Brightness |
+| `[` / `]` | Cycle color palette |
+| Enter (OK) | Open (one-shot boot) |
+| DEL | Delete app (Enter confirms, DEL/ESC cancels) |
 | ESC (hold) | Shortcuts + battery |
 
 ## Battery colors
